@@ -1,0 +1,237 @@
+---
+title: "exofit"
+author: "Deepak Bastola"
+date: "August 6, 2019"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r}
+
+#packages needed
+checkCODA   <-  library(coda,logical.return=TRUE)
+checkMASS   <-  library(MASS,logical.return=TRUE)
+checkHMISC   <-  library(Hmisc,logical.return=TRUE)
+checkGRID   <-  library(grid,logical.return=TRUE)
+checkHDRCDE   <-  library(hdrcde,logical.return=TRUE)
+checkASH   <-  library(ash,logical.return=TRUE)
+
+mcdata   <-  "/home/deepak/Desktop/Exofit/data/1-planet/extract.dat"
+
+#Constants needed
+d2s   <-  86400
+G  <-  6.673e-11
+m_sun <- 1.989e30
+m_jup <- 1.898e27
+AU <- 1.49598e11
+
+if(checkCODA=='TRUE' && checkMASS=='TRUE' && checkHMISC=='TRUE'
+   && checkHDRCDE=='TRUE' && checkASH=='TRUE')
+  {
+
+    
+    #read mcmc extract
+    ext <- read.table(mcdata, head=TRUE)
+    dm <- dim(ext)
+    opt <- ext[1:dm[1],1:(dm[2]-1)]
+    mc <- mcmc(opt)           
+          
+    #find the medians
+    mdn <- vector(mode="numeric",dm[2]+1)
+    for(i in 1:(dm[2]-1))
+      {
+        mdn[i]<-median(opt[1:dm[1],i])
+      }
+
+    #plot the radial velocity curve
+    orbit.plot <- function(rvdata)
+      {
+        #read the data files
+        dat <- read.table(rvdata,head=FALSE)
+        dmd <- dim(dat)
+        #min and max of radial velocity data
+        mdn[(dm[2])]=dat[1,1]
+        mdn[(dm[2]+1)]=dat[dmd[1],1]
+        #write the medians to orb_vals_multi.dat and run the multimaker
+        write.matrix(mdn,file="orb_vals.dat")
+        system('./plotmaker')
+        #plot radial veloctiy curve with errorbars
+        datp<-read.table("orb_plot.dat",head=FALSE)
+        xx<-datp$V1
+        yy<-datp$V2
+        plot(xx,yy,type="l",col="black",lwd=2,
+             main=x<-c("Radial Velocity Curve for ",rvdata),
+             xlab="Time (days)",ylab="Velocity (m/s)")
+        x <- dat$V1
+        y <- dat$V2
+        delta<-dat$V3
+        errbar(x,y,y+delta,y-delta,col="red",lwd=2,add=TRUE)
+      }
+    # print statistics
+    summary.model<-function()
+      {
+        summary(mc)
+      }
+
+    densplot.model<-function()
+      {
+        #set the lattice background as grey
+        strip.background    <-   trellis.par.get("strip.background")
+        strip.background$col[1]<-"#cccccc"
+        trellis.par.set("strip.background",strip.background)
+        densityplot(mc,plot.points=FALSE,col="black")
+      }    
+    summary.others<-function(rvdata,mstar)
+      {
+        dat<-read.table(rvdata,head=FALSE)
+        nPlanets   <-  (nvar(mc)-2)/5
+        
+        if(nPlanets==1)
+          {
+            as_sini_1=ext$K1*ext$T1*d2s*sqrt(1-ext$e1*ext$e1)/(2*pi*1000)
+            mp_sini_1=ext$K1*(mstar*m_sun)^(2/3)*(ext$T1*d2s)^(1/3)*sqrt(1-ext$e1*ext$e1)/((2*pi*G)^(1/3)*m_jup)
+            a_1<-mstar*m_sun*as_sini_1*1000/(mp_sini_1*m_jup*AU)
+            t0_1<-dat[1,1]
+            Tp_1<-t0_1+(1-ext$X)*ext$T
+            oth_para_1<-cbind(as_sini_1,mp_sini_1,Tp_1,a_1)
+            mc_oth_1<-mcmc(oth_para_1)
+            summo<-summary(mc_oth_1)
+            print(summo)
+          }
+        else if(nPlanets==2)
+          {
+            as_sini_1=ext$K1*ext$T1*d2s*sqrt(1-ext$e1*ext$e1)/(2*pi*1000)
+            mp_sini_1=ext$K1*(mstar*m_sun)^(2/3)*(ext$T1*d2s)^(1/3)*sqrt(1-ext$e1*ext$e1)/((2*pi*G)^(1/3)*m_jup)
+            a_1<-mstar*m_sun*as_sini_1*1000/(mp_sini_1*m_jup*AU)
+            t0_1<-mdn[(dm[2])]
+            Tp_1<-t0_1+(1-ext$X1)*ext$T1
+
+            as_sini_2=ext$K2*ext$T2*d2s*sqrt(1-ext$e2*ext$e2)/(2*pi*1000)
+            mp_sini_2=ext$K2*(mstar*m_sun)^(2/3)*(ext$T2*d2s)^(1/3)*sqrt(1-ext$e2*ext$e2)/((2*pi*G)^(1/3)*m_jup)
+            a_2<-mstar*m_sun*as_sini_2*1000/(mp_sini_2*m_jup*AU)
+            t0_2<-mdn[(dm[2])]
+            Tp_2<-t0_2+(1-ext$X2)*ext$T2
+            
+            oth_para<-cbind(as_sini_1,mp_sini_1,Tp_1,a_1,as_sini_2,mp_sini_2,Tp_2,a_2)
+            mc_oth<-mcmc(oth_para)
+
+            summo<-summary(mc_oth)
+            print(summo)          
+          }
+      }
+            
+
+    densplot.others<-function(rvdata,mstar)
+      {
+        dat<-read.table(rvdata,head=FALSE)
+        #dmd<-dim(dat)
+        #mdn[(dm[2])]=dat[1,1]
+        #mdn[(dm[2]+1)]=dat[dmd[1],1]
+        nPlanets   <-  (nvar(mc)-2)/5
+        
+        if(nPlanets==1)
+          {
+            as_sini=ext$K1*ext$T1*d2s*sqrt(1-ext$e1*ext$e1)/(2*pi*1000)
+            mp_sini=ext$K1*(mstar*m_sun)^(2/3)*(ext$T1*d2s)^(1/3)*sqrt(1-ext$e1*ext$e1)/((2*pi*G)^(1/3)*m_jup)
+            a<-mstar*m_sun*as_sini*1000/(mp_sini*m_jup*AU)
+            t0_1<-dat[1,1]
+            Tp<-t0_1+(1-ext$X)*ext$T
+            oth_para<-cbind(as_sini,mp_sini,Tp,a)
+            mc_oth<-mcmc(oth_para)
+            #set the lattice background as grey
+            strip.background  <-  trellis.par.get("strip.background")
+            strip.background$col[1]<-"#cccccc"
+            trellis.par.set("strip.background",strip.background)
+            densityplot(mc_oth,plot.points=FALSE,col="black")
+          }
+        else if(nPlanets==2)
+          {
+            as_sini_1=ext$K1*ext$T1*d2s*sqrt(1-ext$e1*ext$e1)/(2*pi*1000)
+            mp_sini_1=ext$K1*(mstar*m_sun)^(2/3)*(ext$T1*d2s)^(1/3)*sqrt(1-ext$e1*ext$e1)/((2*pi*G)^(1/3)*m_jup)
+            a_1<-mstar*m_sun*as_sini_1*1000/(mp_sini_1*m_jup*AU)
+            t0_1<-mdn[(dm[2])]
+            Tp_1<-t0_1+(1-ext$X1)*ext$T1
+
+            as_sini_2=ext$K2*ext$T2*d2s*sqrt(1-ext$e2*ext$e2)/(2*pi*1000)
+            mp_sini_2=ext$K2*(mstar*m_sun)^(2/3)*(ext$T2*d2s)^(1/3)*sqrt(1-ext$e2*ext$e2)/((2*pi*G)^(1/3)*m_jup)
+            a_2<-mstar*m_sun*as_sini_2*1000/(mp_sini_2*m_jup*AU)
+            t0_2<-mdn[(dm[2])]
+            Tp_2<-t0_2+(1-ext$X2)*ext$T2
+            
+            oth_para<-cbind(as_sini_1,mp_sini_1,Tp_1,a_1,as_sini_2,mp_sini_2,Tp_2,a_2)
+            mc_oth<-mcmc(oth_para)
+
+            #set the lattice background as grey
+            strip.background  <-  trellis.par.get("strip.background")
+            strip.background$col[1]<-"#cccccc"
+            trellis.par.set("strip.background",strip.background)
+
+
+            densityplot(mc_oth,plot.points=FALSE,col="black")
+
+          }
+      }
+
+    densplot.all   <-  function(rvdata,mstar)
+      {
+        dat<-read.table(rvdata,head=FALSE)
+        nPlanets   <-  (nvar(mc)-2)/5
+        if(nPlanets==1)
+          {
+            as_sini=ext$K1*ext$T1*d2s*sqrt(1-ext$e1*ext$e1)/(2*pi*1000)
+            Mp_sini=ext$K1*(mstar*m_sun)^(2/3)*(ext$T1*d2s)^(1/3)*sqrt(1-ext$e1*ext$e1)/((2*pi*G)^(1/3)*m_jup)
+            a<-mstar*m_sun*as_sini*1000/(Mp_sini*m_jup*AU)
+            t0_1<-dat[1,1]
+            Tp<-t0_1+(1-ext$X)*ext$T
+            #oth_para<-cbind(ext$V,ext$T1,ext$K1,ext$e1,ext$w1,ext$X1,
+            #                ext$s,as_sini,mp_sini,Tp,a);
+            oth_para<-cbind(opt,Mp_sini,Tp,a)
+            mc_oth<-mcmc(oth_para)
+            
+            #set the lattice background as grey
+            strip.background  <-  trellis.par.get("strip.background")
+            strip.background$col[1]<-"#cccccc"
+            trellis.par.set("strip.background",strip.background)
+            densityplot(mc_oth,plot.points=FALSE,col="black")
+          }
+        else if(nPlanets==2)
+          {
+            as_sini_1=ext$K1*ext$T1*d2s*sqrt(1-ext$e1*ext$e1)/(2*pi*1000)
+            Mp_sini_1=ext$K1*(mstar*m_sun)^(2/3)*(ext$T1*d2s)^(1/3)*sqrt(
+              1-ext$e1*ext$e1)/((2*pi*G)^(1/3)*m_jup)
+            a_1<-mstar*m_sun*as_sini_1*1000/(Mp_sini_1*m_jup*AU)
+            t0_1<-mdn[(dm[2])]
+            Tp_1<-t0_1+(1-ext$X1)*ext$T1
+
+            as_sini_2=ext$K2*ext$T2*d2s*sqrt(1-ext$e2*ext$e2)/(2*pi*1000)
+            Mp_sini_2=ext$K2*(mstar*m_sun)^(2/3)*(ext$T2*d2s)^(1/3)*sqrt(
+              1-ext$e2*ext$e2)/((2*pi*G)^(1/3)*m_jup)
+            a_2<-mstar*m_sun*as_sini_2*1000/(Mp_sini_2*m_jup*AU)
+            t0_2<-mdn[(dm[2])]
+            Tp_2<-t0_2+(1-ext$X2)*ext$T2
+            
+            oth_para<-cbind(opt,Mp_sini_1,Tp_1,a_1,Mp_sini_2,Tp_2,a_2)
+
+            mc_oth<-mcmc(oth_para)
+
+            #set the lattice background as grey
+            strip.background  <-  trellis.par.get("strip.background")
+            strip.background$col[1]<-"#cccccc"
+            trellis.par.set("strip.background",strip.background)
+
+
+            densityplot(mc_oth,plot.points=FALSE,col="black")        
+          }
+      }
+
+  }else
+  {
+    cat("REQUIRED PACKAGES CANNOT BE FOUND\n")
+  }
+
+summary.model()
+densplot.model()
+
+
+```
